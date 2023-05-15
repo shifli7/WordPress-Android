@@ -22,6 +22,7 @@ import org.wordpress.android.WordPress
 import org.wordpress.android.databinding.MySiteFragmentBinding
 import org.wordpress.android.databinding.MySiteInfoHeaderCardBinding
 import org.wordpress.android.ui.ActivityLauncher
+import org.wordpress.android.ui.jetpackoverlay.individualplugin.WPJetpackIndividualPluginFragment
 import org.wordpress.android.ui.main.SitePickerActivity
 import org.wordpress.android.ui.main.utils.MeGravatarLoader
 import org.wordpress.android.ui.mysite.MySiteCardAndItem.SiteInfoHeaderCard
@@ -38,6 +39,7 @@ import org.wordpress.android.util.extensions.setVisible
 import org.wordpress.android.util.image.ImageManager
 import org.wordpress.android.util.image.ImageType.BLAVATAR
 import org.wordpress.android.util.image.ImageType.USER
+import org.wordpress.android.viewmodel.main.WPMainActivityViewModel
 import org.wordpress.android.viewmodel.observeEvent
 import org.wordpress.android.widgets.QuickStartFocusPoint
 import javax.inject.Inject
@@ -56,6 +58,8 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
     @Inject
     lateinit var imageManager: ImageManager
     private lateinit var viewModel: MySiteViewModel
+
+    private lateinit var wpMainActivityViewModel: WPMainActivityViewModel
 
     private var binding: MySiteFragmentBinding? = null
     private var siteTitle: String? = null
@@ -94,13 +98,15 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
 
     private fun initViewModel() {
         viewModel = ViewModelProvider(this, viewModelFactory).get(MySiteViewModel::class.java)
+        wpMainActivityViewModel = ViewModelProvider(requireActivity(), viewModelFactory)
+            .get(WPMainActivityViewModel::class.java)
     }
 
     private fun MySiteFragmentBinding.setupToolbar() {
         toolbarMain.let { toolbar ->
             toolbar.inflateMenu(R.menu.my_site_menu)
             toolbar.menu.findItem(R.id.me_item)?.let { meMenu ->
-                meMenu.actionView.let { actionView ->
+                meMenu.actionView?.let { actionView ->
                     actionView.contentDescription = meMenu.title
                     actionView.setOnClickListener { viewModel.onAvatarPressed() }
                     TooltipCompat.setTooltipText(actionView, meMenu.title)
@@ -187,6 +193,9 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
         viewModel.selectTab.observeEvent(viewLifecycleOwner) { navTarget ->
             viewPager.setCurrentItem(navTarget.position, navTarget.smoothAnimation)
         }
+        viewModel.onShowJetpackIndividualPluginOverlay.observeEvent(viewLifecycleOwner) {
+            WPJetpackIndividualPluginFragment.show(requireActivity().supportFragmentManager)
+        }
     }
 
     private fun MySiteFragmentBinding.loadGravatar(avatarUrl: String) =
@@ -204,9 +213,9 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
     private fun MySiteFragmentBinding.loadData(state: State.SiteSelected) {
         tabLayout.setVisible(state.tabsUiState.showTabs)
         updateTabs(state.tabsUiState)
-        actionableEmptyView.setVisible(false)
-        viewModel.setActionableEmptyViewGone(actionableEmptyView.isVisible) {
+        if (actionableEmptyView.isVisible) {
             actionableEmptyView.setVisible(false)
+            viewModel.onActionableEmptyViewGone()
         }
         if (state.siteInfoHeaderState.hasUpdates || !header.isVisible) {
             siteInfo.loadMySiteDetails(state.siteInfoHeaderState.siteInfoHeader)
@@ -259,11 +268,11 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
 
     private fun MySiteFragmentBinding.loadEmptyView(state: State.NoSites) {
         tabLayout.setVisible(state.tabsUiState.showTabs)
-        viewModel.setActionableEmptyViewVisible(actionableEmptyView.isVisible) {
+        if (!actionableEmptyView.isVisible) {
             actionableEmptyView.setVisible(true)
             actionableEmptyView.image.setVisible(state.shouldShowImage)
+            viewModel.onActionableEmptyViewVisible()
         }
-        actionableEmptyView.image.setVisible(state.shouldShowImage)
         siteTitle = getString(R.string.my_site_section_screen_title)
         updateSiteInfoToolbarView(state.siteInfoToolbarViewParams)
         appbarMain.setExpanded(false, true)
@@ -301,6 +310,7 @@ class MySiteFragment : Fragment(R.layout.my_site_fragment),
     private fun handleNavigationAction(action: SiteNavigationAction) = when (action) {
         is SiteNavigationAction.OpenMeScreen -> ActivityLauncher.viewMeActivityForResult(activity)
         is SiteNavigationAction.AddNewSite -> SitePickerActivity.addSite(activity, action.hasAccessToken, action.source)
+        is SiteNavigationAction.TriggerCreatePageFlow -> wpMainActivityViewModel.triggerCreatePageFlow()
         else -> {
             /* Pass all other navigationAction on to the child fragment, so they can be handled properly.
                Added brief delay before passing action to nested (view pager) tab fragments to give them time to get

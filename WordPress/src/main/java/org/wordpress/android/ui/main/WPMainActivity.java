@@ -16,6 +16,7 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
@@ -91,6 +92,7 @@ import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureFullScreenOverlayFr
 import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureRemovalOverlayUtil;
 import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureRemovalOverlayUtil.JetpackFeatureCollectionOverlaySource;
 import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureRemovalPhaseHelper;
+import org.wordpress.android.ui.main.MainActionListItem.ActionType;
 import org.wordpress.android.ui.main.WPMainNavigationView.OnPageListener;
 import org.wordpress.android.ui.main.WPMainNavigationView.PageType;
 import org.wordpress.android.ui.mlp.ModalLayoutPickerFragment;
@@ -150,10 +152,12 @@ import org.wordpress.android.util.analytics.service.InstallationReferrerServiceS
 import org.wordpress.android.util.config.MySiteDashboardTodaysStatsCardFeatureConfig;
 import org.wordpress.android.util.config.OpenWebLinksWithJetpackFlowFeatureConfig;
 import org.wordpress.android.util.config.QRCodeAuthFlowFeatureConfig;
+import org.wordpress.android.util.extensions.CompatExtensionsKt;
 import org.wordpress.android.util.extensions.ViewExtensionsKt;
 import org.wordpress.android.viewmodel.main.WPMainActivityViewModel;
 import org.wordpress.android.viewmodel.main.WPMainActivityViewModel.FocusPointInfo;
 import org.wordpress.android.viewmodel.mlp.ModalLayoutPickerViewModel;
+import org.wordpress.android.viewmodel.mlp.ModalLayoutPickerViewModel.CreatePageDashboardSource;
 import org.wordpress.android.widgets.AppRatingDialog;
 import org.wordpress.android.workers.notification.createsite.CreateSiteNotificationScheduler;
 import org.wordpress.android.workers.weeklyroundup.WeeklyRoundupScheduler;
@@ -309,6 +313,7 @@ public class WPMainActivity extends LocaleAwareActivity implements
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main_activity);
 
+        initBackPressHandler();
 
         mConnectionBar = findViewById(R.id.connection_bar);
         mConnectionBar.setOnClickListener(v -> {
@@ -328,7 +333,7 @@ public class WPMainActivity extends LocaleAwareActivity implements
         boolean canShowAppRatingPrompt = savedInstanceState != null;
 
         mBottomNav = findViewById(R.id.bottom_navigation);
-        mBottomNav.init(getSupportFragmentManager(), this);
+        mBottomNav.init(getSupportFragmentManager(), this, mJetpackFeatureRemovalPhaseHelper);
 
         if (savedInstanceState == null) {
             if (!AppPrefs.isInstallationReferrerObtained()) {
@@ -366,10 +371,10 @@ public class WPMainActivity extends LocaleAwareActivity implements
                     }
                 } else if (openedFromShortcut) {
                     initSelectedSite();
-                    mShortcutsNavigator.showTargetScreen(getIntent().getStringExtra(
-                            ShortcutsNavigator.ACTION_OPEN_SHORTCUT), this, getSelectedSite());
-                    showJetpackOverlayIfNeeded(getIntent().getStringExtra(
-                            ShortcutsNavigator.ACTION_OPEN_SHORTCUT));
+                        mShortcutsNavigator.showTargetScreen(getIntent().getStringExtra(
+                                ShortcutsNavigator.ACTION_OPEN_SHORTCUT), this, getSelectedSite());
+                        showJetpackOverlayIfNeeded(getIntent().getStringExtra(
+                                ShortcutsNavigator.ACTION_OPEN_SHORTCUT));
                 } else if (openRequestedPage) {
                     handleOpenPageIntent(getIntent());
                 } else if (isQuickStartRequestedFromPush) {
@@ -488,6 +493,30 @@ public class WPMainActivity extends LocaleAwareActivity implements
         }
 
         displayJetpackFeatureCollectionOverlayIfNeeded();
+    }
+
+    private void initBackPressHandler() {
+        OnBackPressedCallback callback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // let the fragment handle the back button if it implements our OnParentBackPressedListener
+                if (mBottomNav != null) {
+                    Fragment fragment = mBottomNav.getActiveFragment();
+                    if (fragment instanceof OnActivityBackPressedListener) {
+                        boolean handled = ((OnActivityBackPressedListener) fragment).onActivityBackPressed();
+                        if (handled) {
+                            return;
+                        }
+                    }
+                }
+
+                if (isTaskRoot() && DeviceUtils.getInstance().isChromebook(WPMainActivity.this)) {
+                    return; // don't close app in Main Activity
+                }
+                CompatExtensionsKt.onBackPressedCompat(getOnBackPressedDispatcher(), this);
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, callback);
     }
 
     private void showJetpackOverlayIfNeeded(String action) {
@@ -664,13 +693,8 @@ public class WPMainActivity extends LocaleAwareActivity implements
                     handleNewPostAction(PagePostCreationSourcesDetail.POST_FROM_MY_SITE, -1, null);
                     break;
                 case CREATE_NEW_PAGE:
-                    if (mMLPViewModel.canShowModalLayoutPicker()
-                        && !mJetpackFeatureRemovalPhaseHelper.shouldRemoveJetpackFeatures()) {
-                        mMLPViewModel.createPageFlowTriggered();
-                    } else {
-                        handleNewPageAction("", "", null,
-                                PagePostCreationSourcesDetail.PAGE_FROM_MY_SITE);
-                    }
+                case CREATE_NEW_PAGE_FROM_PAGES_CARD:
+                    triggerCreatePageFlow(createAction);
                     break;
                 case CREATE_NEW_STORY:
                     handleNewStoryAction();
@@ -691,8 +715,13 @@ public class WPMainActivity extends LocaleAwareActivity implements
         );
 
         mMLPViewModel.getOnCreateNewPageRequested().observe(this, request -> {
-            handleNewPageAction(request.getTitle(), "", request.getTemplate(),
-                    PagePostCreationSourcesDetail.PAGE_FROM_MY_SITE);
+            if (mMLPViewModel.getCreatePageDashboardSource() == CreatePageDashboardSource.PAGES_CARD) {
+                handleNewPageAction(request.getTitle(), "", request.getTemplate(),
+                        PagePostCreationSourcesDetail.PAGE_FROM_PAGES_CARD_MY_SITE_DASHBOARD);
+            } else {
+                handleNewPageAction(request.getTitle(), "", request.getTemplate(),
+                        PagePostCreationSourcesDetail.PAGE_FROM_MY_SITE);
+            }
         });
 
         mViewModel.getOnFeatureAnnouncementRequested().observe(this, action -> {
@@ -795,6 +824,29 @@ public class WPMainActivity extends LocaleAwareActivity implements
         mViewModel.start(getSelectedSite());
     }
 
+    private void triggerCreatePageFlow(ActionType actionType) {
+        if (mMLPViewModel.canShowModalLayoutPicker()
+            && mJetpackFeatureRemovalPhaseHelper.shouldShowTemplateSelectionInPages()) {
+            mMLPViewModel.createPageFlowTriggered(getCreatePageDashboardSourceFromActionType(actionType));
+        } else {
+            if (actionType == ActionType.CREATE_NEW_PAGE_FROM_PAGES_CARD) {
+                handleNewPageAction("", "", null,
+                        PagePostCreationSourcesDetail.PAGE_FROM_PAGES_CARD_MY_SITE_DASHBOARD);
+            } else {
+                handleNewPageAction("", "", null,
+                        PagePostCreationSourcesDetail.PAGE_FROM_MY_SITE);
+            }
+        }
+    }
+
+    private CreatePageDashboardSource getCreatePageDashboardSourceFromActionType(ActionType actionType) {
+        if (actionType == ActionType.CREATE_NEW_PAGE_FROM_PAGES_CARD) {
+            return CreatePageDashboardSource.PAGES_CARD;
+        } else {
+            return CreatePageDashboardSource.FLOATING_ACTION_BUTTON;
+        }
+    }
+
     private @Nullable String getAuthToken() {
         Uri uri = getIntent().getData();
         return uri != null ? uri.getQueryParameter(LoginActivity.TOKEN_PARAMETER) : null;
@@ -861,6 +913,10 @@ public class WPMainActivity extends LocaleAwareActivity implements
                         Map<String, String> trackingProperties = new HashMap<>();
                         trackingProperties.put("calling_function", "deeplink_stats");
                         showJetpackFeatureOverlayAccessedInCorrectly(trackingProperties);
+                        break;
+                    }
+                    if (mJetpackFeatureRemovalPhaseHelper.shouldShowStaticPage()) {
+                        ActivityLauncher.showJetpackStaticPoster(this);
                         break;
                     }
                     if (intent.hasExtra(ARG_STATS_TIMEFRAME)) {
@@ -1105,25 +1161,6 @@ public class WPMainActivity extends LocaleAwareActivity implements
 
     private void announceTitleForAccessibility(PageType pageType) {
         getWindow().getDecorView().announceForAccessibility(mBottomNav.getContentDescriptionForPageType(pageType));
-    }
-
-    @Override
-    public void onBackPressed() {
-        // let the fragment handle the back button if it implements our OnParentBackPressedListener
-        if (mBottomNav != null) {
-            Fragment fragment = mBottomNav.getActiveFragment();
-            if (fragment instanceof OnActivityBackPressedListener) {
-                boolean handled = ((OnActivityBackPressedListener) fragment).onActivityBackPressed();
-                if (handled) {
-                    return;
-                }
-            }
-        }
-
-        if (isTaskRoot() && DeviceUtils.getInstance().isChromebook(this)) {
-            return; // don't close app in Main Activity
-        }
-        super.onBackPressed();
     }
 
     @Override

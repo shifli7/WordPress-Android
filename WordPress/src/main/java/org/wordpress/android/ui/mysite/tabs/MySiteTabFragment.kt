@@ -34,9 +34,10 @@ import org.wordpress.android.ui.TextInputDialogFragment
 import org.wordpress.android.ui.accounts.LoginEpilogueActivity
 import org.wordpress.android.ui.domains.DomainRegistrationActivity.Companion.RESULT_REGISTERED_DOMAIN_EMAIL
 import org.wordpress.android.ui.domains.DomainRegistrationActivity.DomainRegistrationPurpose.CTA_DOMAIN_CREDIT_REDEMPTION
+import org.wordpress.android.ui.domains.DomainRegistrationActivity.DomainRegistrationPurpose.DOMAIN_PURCHASE
 import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureFullScreenOverlayFragment
 import org.wordpress.android.ui.jetpackoverlay.JetpackFeatureRemovalOverlayUtil.JetpackFeatureCollectionOverlaySource
-import org.wordpress.android.ui.jpfullplugininstall.onboarding.JetpackFullPluginInstallOnboardingDialogFragment
+import org.wordpress.android.ui.jetpackplugininstall.fullplugin.onboarding.JetpackFullPluginInstallOnboardingDialogFragment
 import org.wordpress.android.ui.main.SitePickerActivity
 import org.wordpress.android.ui.main.WPMainActivity
 import org.wordpress.android.ui.main.jetpack.migration.JetpackMigrationActivity
@@ -87,13 +88,16 @@ import org.wordpress.android.util.SnackbarSequencer
 import org.wordpress.android.util.UriWrapper
 import org.wordpress.android.util.WPSwipeToRefreshHelper.buildSwipeToRefreshHelper
 import org.wordpress.android.util.extensions.getColorFromAttribute
+import org.wordpress.android.util.extensions.getSerializableCompat
 import org.wordpress.android.util.extensions.setVisible
 import org.wordpress.android.util.helpers.SwipeToRefreshHelper
 import org.wordpress.android.util.image.ImageManager
 import org.wordpress.android.viewmodel.observeEvent
+import org.wordpress.android.viewmodel.pages.PageListViewModel
 import java.io.File
 import javax.inject.Inject
 
+@Suppress("LargeClass")
 class MySiteTabFragment : Fragment(R.layout.my_site_tab_fragment),
     TextInputDialogFragment.Callback,
     QuickStartPromptClickInterface,
@@ -398,6 +402,12 @@ class MySiteTabFragment : Fragment(R.layout.my_site_tab_fragment),
             action.site,
             CTA_DOMAIN_CREDIT_REDEMPTION
         )
+        is SiteNavigationAction.OpenPaidDomainSearch -> ActivityLauncher.viewDomainRegistrationActivityForResult(
+            this,
+            action.site,
+            DOMAIN_PURCHASE
+        )
+
         is SiteNavigationAction.AddNewSite -> SitePickerActivity.addSite(activity, action.hasAccessToken, action.source)
         is SiteNavigationAction.ShowQuickStartDialog -> showQuickStartDialog(
             action.title,
@@ -436,6 +446,26 @@ class MySiteTabFragment : Fragment(R.layout.my_site_tab_fragment),
             requireActivity(),
             null,
             action.source
+        )
+        is SiteNavigationAction.ShowJetpackRemovalStaticPostersView -> {
+            ActivityLauncher.showJetpackStaticPoster(requireActivity())
+        }
+        is SiteNavigationAction.OpenActivityLogDetail -> ActivityLauncher.viewActivityLogDetailFromDashboardCard(
+            activity,
+            action.site,
+            action.activityId,
+            action.isRewindable
+        )
+        is SiteNavigationAction.TriggerCreatePageFlow -> Unit // no-op
+        is SiteNavigationAction.OpenPagesDraftsTab -> ActivityLauncher.viewCurrentBlogPagesOfType(
+            requireActivity(),
+            action.site,
+            PageListViewModel.PageListType.DRAFTS
+        )
+        is SiteNavigationAction.OpenPagesScheduledTab -> ActivityLauncher.viewCurrentBlogPagesOfType(
+            requireActivity(),
+            action.site,
+            PageListViewModel.PageListType.SCHEDULED
         )
     }
 
@@ -737,7 +767,7 @@ class MySiteTabFragment : Fragment(R.layout.my_site_tab_fragment),
     }
 
     override fun onConfirm(result: Bundle?) {
-        val task = result?.getSerializable(QuickStartFullScreenDialogFragment.RESULT_TASK) as? QuickStartTask
+        val task = result?.getSerializableCompat(QuickStartFullScreenDialogFragment.RESULT_TASK) as? QuickStartTask
         task?.let { viewModel.onQuickStartTaskCardClick(it) }
     }
 

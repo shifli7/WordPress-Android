@@ -12,10 +12,13 @@ import org.wordpress.android.ui.LocaleAwareActivity
 import org.wordpress.android.ui.notifications.SystemNotificationsTracker
 import org.wordpress.android.ui.posts.BasicFragmentDialog.BasicDialogNegativeClickInterface
 import org.wordpress.android.ui.posts.BasicFragmentDialog.BasicDialogPositiveClickInterface
+import org.wordpress.android.util.extensions.getSerializableExtraCompat
+import org.wordpress.android.viewmodel.pages.PageListViewModel
 import javax.inject.Inject
 
 const val EXTRA_PAGE_REMOTE_ID_KEY = "extra_page_remote_id_key"
 const val EXTRA_PAGE_PARENT_ID_KEY = "extra_page_parent_id_key"
+const val EXTRA_PAGE_LIST_TYPE_KEY = "extra_page_list_type_key"
 
 class PagesActivity : LocaleAwareActivity(),
     BasicDialogPositiveClickInterface,
@@ -39,8 +42,9 @@ class PagesActivity : LocaleAwareActivity(),
 
     private fun handleIntent(intent: Intent) {
         if (intent.hasExtra(ARG_NOTIFICATION_TYPE)) {
-            val notificationType: NotificationType =
-                intent.getSerializableExtra(ARG_NOTIFICATION_TYPE) as NotificationType
+            val notificationType = requireNotNull(
+                intent.getSerializableExtraCompat<NotificationType>(ARG_NOTIFICATION_TYPE)
+            )
             systemNotificationTracker.trackTappedNotification(notificationType)
         }
 
@@ -50,11 +54,20 @@ class PagesActivity : LocaleAwareActivity(),
                 (it as PagesFragment).onSpecificPageRequested(pageId)
             }
         }
+
+        if (intent.hasExtra(EXTRA_PAGE_LIST_TYPE_KEY)) {
+            val pageListType = requireNotNull(
+                intent.getSerializableExtraCompat<PageListViewModel.PageListType>(EXTRA_PAGE_LIST_TYPE_KEY)
+            )
+            supportFragmentManager.findFragmentById(R.id.fragment_container)?.let {
+                (it as PagesFragment).onSpecificPageListTypeRequested(pageListType)
+            }
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
-            onBackPressed()
+            onBackPressedDispatcher.onBackPressed()
             return true
         }
         return super.onOptionsItemSelected(item)

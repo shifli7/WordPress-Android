@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.wordpress.android.fluxc.model.SiteModel
 import org.wordpress.android.fluxc.model.dashboard.CardModel.Type
@@ -14,6 +15,8 @@ import org.wordpress.android.modules.BG_THREAD
 import org.wordpress.android.ui.mysite.MySiteSource.MySiteRefreshSource
 import org.wordpress.android.ui.mysite.MySiteUiState.PartialState.CardsUpdate
 import org.wordpress.android.ui.mysite.SelectedSiteRepository
+import org.wordpress.android.ui.mysite.cards.dashboard.activity.DashboardActivityLogCardFeatureUtils
+import org.wordpress.android.util.config.DashboardCardPagesConfig
 import org.wordpress.android.util.config.MySiteDashboardTodaysStatsCardFeatureConfig
 import javax.inject.Inject
 import javax.inject.Named
@@ -23,10 +26,15 @@ const val REFRESH_DELAY = 500L
 class CardsSource @Inject constructor(
     private val selectedSiteRepository: SelectedSiteRepository,
     private val cardsStore: CardsStore,
+    private val dashboardActivityLogCardFeatureUtils: DashboardActivityLogCardFeatureUtils,
     todaysStatsCardFeatureConfig: MySiteDashboardTodaysStatsCardFeatureConfig,
+    dashboardCardPagesConfig: DashboardCardPagesConfig,
     @param:Named(BG_THREAD) private val bgDispatcher: CoroutineDispatcher
 ) : MySiteRefreshSource<CardsUpdate> {
     private val isTodaysStatsCardFeatureConfigEnabled = todaysStatsCardFeatureConfig.isEnabled()
+
+    private val isDashboardCardPagesConfigEnabled = dashboardCardPagesConfig.isEnabled()
+
     override val refresh = MutableLiveData(false)
 
     override fun build(coroutineScope: CoroutineScope, siteLocalId: Int): LiveData<CardsUpdate> {
@@ -44,9 +52,11 @@ class CardsSource @Inject constructor(
         val selectedSite = selectedSiteRepository.getSelectedSite()
         if (selectedSite != null && selectedSite.id == siteLocalId) {
             coroutineScope.launch(bgDispatcher) {
-                cardsStore.getCards(selectedSite, getCardTypes()).collect { result ->
-                    postValue(CardsUpdate(result.model))
-                }
+                cardsStore.getCards(selectedSite, getCardTypes(selectedSite))
+                    .map { it.model }
+                    .collect { result ->
+                        postValue(CardsUpdate(result))
+                    }
             }
         } else {
             postErrorState()
@@ -82,7 +92,7 @@ class CardsSource @Inject constructor(
     ) {
         coroutineScope.launch(bgDispatcher) {
             delay(REFRESH_DELAY)
-            val result = cardsStore.fetchCards(selectedSite, getCardTypes())
+            val result = cardsStore.fetchCards(selectedSite, getCardTypes(selectedSite))
             val model = result.model
             val error = result.error
             when {
@@ -93,10 +103,17 @@ class CardsSource @Inject constructor(
         }
     }
 
-    private fun getCardTypes() = mutableListOf<Type>().apply {
+    private fun getCardTypes(selectedSite: SiteModel) = mutableListOf<Type>().apply {
         if (isTodaysStatsCardFeatureConfigEnabled) add(Type.TODAYS_STATS)
+        if (shouldRequestPagesCard(selectedSite)) add(Type.PAGES)
+        if (dashboardActivityLogCardFeatureUtils.shouldRequestActivityCard(selectedSite)) add(Type.ACTIVITY)
         add(Type.POSTS)
     }.toList()
+
+    private fun shouldRequestPagesCard(selectedSite: SiteModel): Boolean {
+        return isDashboardCardPagesConfigEnabled &&
+                (selectedSite.hasCapabilityEditPages || selectedSite.isSelfHostedAdmin)
+    }
 
     private fun MediatorLiveData<CardsUpdate>.postErrorState() {
         val lastStateCards = this.value?.cards

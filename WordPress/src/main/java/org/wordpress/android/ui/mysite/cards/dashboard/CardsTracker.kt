@@ -7,6 +7,7 @@ import org.wordpress.android.ui.mysite.MySiteCardAndItem.DashboardCardType
 import org.wordpress.android.ui.mysite.cards.dashboard.CardsTracker.PostSubtype
 import org.wordpress.android.ui.mysite.cards.dashboard.CardsTracker.QuickStartSubtype
 import org.wordpress.android.ui.mysite.cards.dashboard.CardsTracker.Type
+import org.wordpress.android.ui.mysite.cards.dashboard.pages.PagesCardContentType
 import org.wordpress.android.ui.mysite.cards.dashboard.posts.PostCardType
 import org.wordpress.android.ui.quickstart.QuickStartTracker
 import org.wordpress.android.ui.quickstart.QuickStartType
@@ -24,7 +25,10 @@ class CardsTracker @Inject constructor(
         STATS("stats"),
         POST("post"),
         BLOGGING_PROMPT("blogging_prompt"),
-        PROMOTE_WITH_BLAZE("promote_with_blaze")
+        PROMOTE_WITH_BLAZE("promote_with_blaze"),
+        PAGES("pages"),
+        ACTIVITY("activity_log"),
+        DASHBOARD_CARD_DOMAIN("dashboard_card_domain"),
     }
 
     enum class QuickStartSubtype(val label: String) {
@@ -44,6 +48,17 @@ class CardsTracker @Inject constructor(
         CREATE_NEXT("create_next"),
         DRAFT("draft"),
         SCHEDULED("scheduled")
+    }
+
+    enum class ActivityLogSubtype(val label: String) {
+        ACTIVITY_LOG("activity_log")
+    }
+
+    enum class PagesSubType(val label: String) {
+        CREATE_PAGE("create_page"),
+        DRAFT("draft"),
+        SCHEDULED("scheduled"),
+        PUBLISHED("published")
     }
 
     fun trackQuickStartCardItemClicked(quickStartTaskType: QuickStartTaskType) {
@@ -68,6 +83,22 @@ class CardsTracker @Inject constructor(
 
     fun trackPostItemClicked(postCardType: PostCardType) {
         trackCardItemClicked(Type.POST.label, postCardType.toSubtypeValue().label)
+    }
+
+    fun trackActivityCardItemClicked() {
+        trackCardItemClicked(Type.ACTIVITY.label, ActivityLogSubtype.ACTIVITY_LOG.label)
+    }
+
+    fun trackActivityCardFooterClicked() {
+        trackCardFooterLinkClicked(Type.ACTIVITY.label, ActivityLogSubtype.ACTIVITY_LOG.label)
+    }
+
+    fun trackPagesItemClicked(pageCardType: PagesCardContentType) {
+        trackCardItemClicked(Type.PAGES.label, pageCardType.toSubtypeValue().label)
+    }
+
+    fun trackPagesCardFooterClicked() {
+        trackCardFooterLinkClicked(Type.PAGES.label, PagesSubType.CREATE_PAGE.label)
     }
 
     private fun trackCardFooterLinkClicked(type: String, subtype: String) {
@@ -119,6 +150,10 @@ fun DashboardCardType.toTypeValue(): Type {
         DashboardCardType.POST_CARD_WITH_POST_ITEMS -> Type.POST
         DashboardCardType.BLOGGING_PROMPT_CARD -> Type.BLOGGING_PROMPT
         DashboardCardType.PROMOTE_WITH_BLAZE_CARD -> Type.PROMOTE_WITH_BLAZE
+        DashboardCardType.DASHBOARD_DOMAIN_CARD -> Type.DASHBOARD_CARD_DOMAIN
+        DashboardCardType.PAGES_CARD -> Type.PAGES
+        DashboardCardType.PAGES_CARD_ERROR -> Type.ERROR
+        DashboardCardType.ACTIVITY_CARD -> Type.ACTIVITY
     }
 }
 
@@ -128,6 +163,14 @@ fun PostCardType.toSubtypeValue(): PostSubtype {
         PostCardType.CREATE_NEXT -> PostSubtype.CREATE_NEXT
         PostCardType.DRAFT -> PostSubtype.DRAFT
         PostCardType.SCHEDULED -> PostSubtype.SCHEDULED
+    }
+}
+
+fun PagesCardContentType.toSubtypeValue(): CardsTracker.PagesSubType {
+    return when (this) {
+        PagesCardContentType.DRAFT -> CardsTracker.PagesSubType.DRAFT
+        PagesCardContentType.PUBLISH -> CardsTracker.PagesSubType.PUBLISHED
+        PagesCardContentType.SCHEDULED -> CardsTracker.PagesSubType.SCHEDULED
     }
 }
 

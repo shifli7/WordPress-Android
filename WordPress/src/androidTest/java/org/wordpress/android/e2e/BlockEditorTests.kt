@@ -1,11 +1,8 @@
 package org.wordpress.android.e2e
 
-import android.Manifest.permission
-import androidx.test.rule.GrantPermissionRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Before
 import org.junit.Ignore
-import org.junit.Rule
 import org.junit.Test
 import org.wordpress.android.e2e.pages.BlockEditorPage
 import org.wordpress.android.e2e.pages.MySitesPage
@@ -14,9 +11,6 @@ import java.time.Instant
 
 @HiltAndroidTest
 class BlockEditorTests : BaseTest() {
-    @JvmField @Rule
-    var mRuntimeImageAccessRule = GrantPermissionRule.grant(permission.WRITE_EXTERNAL_STORAGE)
-
     @Before
     fun setUp() {
         logoutIfNecessary()
@@ -38,7 +32,6 @@ class BlockEditorTests : BaseTest() {
     fun e2ePublishSimplePost() {
         val title = "publishSimplePost"
         MySitesPage()
-            .go()
             .startNewPost()
         BlockEditorPage()
             .waitForTitleDisplayed()
@@ -48,12 +41,11 @@ class BlockEditorTests : BaseTest() {
             .verifyPostPublished()
     }
 
-    @Ignore
     @Test
+    @Ignore("This test is temporarily disabled as being flaky.")
     fun e2ePublishFullPost() {
         val title = "publishFullPost"
         MySitesPage()
-            .go()
             .startNewPost()
         BlockEditorPage()
             .waitForTitleDisplayed()
@@ -71,7 +63,6 @@ class BlockEditorTests : BaseTest() {
     fun e2eBlockEditorCanDisplayElementAddedInHtmlMode() {
         val title = "blockEditorCanDisplayElementAddedInHtmlMode"
         MySitesPage()
-            .go()
             .startNewPost()
         BlockEditorPage()
             .waitForTitleDisplayed()
